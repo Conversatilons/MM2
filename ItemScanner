@@ -1,0 +1,854 @@
+--kinda buggy with the UI checker, it works nonetheless
+--06/22/26 adding values soon!!!!!11!!!!
+--90% vibecoded
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+
+local RARITY_ORDER = {
+    {name = "ANCIENT",   color = Color3.fromRGB(100, 10, 255),  rank = 1},
+    {name = "UNIQUE",    color = Color3.fromRGB(240, 140, 0),   rank = 2},
+    {name = "GODLY",     color = Color3.fromRGB(255, 0, 179),   rank = 3},
+	{name = "VINTAGE",   color = Color3.fromRGB(230, 200, 0),   rank = 4},
+    {name = "LEGENDARY", color = Color3.fromRGB(220, 0, 5),     rank = 5},
+	{name = "RARE",      color = Color3.fromRGB(0, 255, 255),     rank = 6},
+    {name = "UNCOMMON",  color = Color3.fromRGB(0, 200, 0),     rank = 7},
+    {name = "COMMON",    color = Color3.fromRGB(106, 106, 106), rank = 8},
+}
+
+local RARITY_COLORS = {
+    ANCIENT   = Color3.fromRGB(100, 10, 255),
+    UNIQUE    = Color3.fromRGB(240, 140, 0),
+    GODLY     = Color3.fromRGB(255, 0, 179),
+    VINTAGE   = Color3.fromRGB(230, 200, 0),
+    LEGENDARY = Color3.fromRGB(220, 0, 5),
+	RARE      = Color3.fromRGB(0, 255, 255),
+    UNCOMMON  = Color3.fromRGB(0, 200, 0),
+    COMMON    = Color3.fromRGB(106, 106, 106),
+    UNKNOWN   = Color3.fromRGB(80, 80, 80),
+}
+
+-- ─── PRESTIGE / LEVEL HELPERS ────────────────────────────────────────────────
+
+-- Roman numeral → integer (handles I through X = 1..10)
+local ROMAN_MAP = {
+    I=1, II=2, III=3, IV=4, V=5,
+    VI=6, VII=7, VIII=8, IX=9, X=10,
+}
+local function romanToInt(s)
+    return ROMAN_MAP[s and s:upper():match("^%s*(.-)%s*$")] or 0
+end
+
+-- Returns a single comparable score: prestige * 100 + level
+-- Reads directly from the leaderboard container (instant, no profile open).
+local function getPlayerScore(username)
+    local ok, levelLabel = pcall(function()
+        return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Container[username].Level.Level
+    end)
+    local level = 0
+    if ok and levelLabel then
+        level = tonumber(levelLabel.Text) or 0
+    end
+
+    local ok2, prestigeLabel = pcall(function()
+        return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Container[username].Level.Prestige
+    end)
+    local prestige = 0
+    if ok2 and prestigeLabel then
+        prestige = romanToInt(prestigeLabel.Text)
+    end
+
+    return prestige * 100 + level
+end
+
+-- ─── RARITY / COLOUR HELPERS ─────────────────────────────────────────────────
+
+local function colorClose(a, b, threshold)
+    threshold = threshold or 10
+    return math.abs(a.R*255 - b.R*255) <= threshold
+        and math.abs(a.G*255 - b.G*255) <= threshold
+        and math.abs(a.B*255 - b.B*255) <= threshold
+end
+
+local function getRarity(newItem)
+    local itemNameFrame = newItem:FindFirstChild("ItemName")
+    if not itemNameFrame then return 99, "UNKNOWN" end
+    local bg = itemNameFrame.BackgroundColor3
+    for _, r in ipairs(RARITY_ORDER) do
+        if colorClose(bg, r.color) then
+            return r.rank, r.name
+        end
+    end
+    return 99, "UNKNOWN"
+end
+
+-- ─── GUI ROOT ────────────────────────────────────────────────────────────────
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "ItemsViewer"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = LocalPlayer.PlayerGui
+
+local MainFrame = Instance.new("Frame")
+MainFrame.Size = UDim2.new(0, 500, 0, 520)
+MainFrame.Position = UDim2.new(0.5, -250, 0.5, -260)
+MainFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+MainFrame.BorderSizePixel = 0
+MainFrame.Parent = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 12)
+
+local MainStroke = Instance.new("UIStroke")
+MainStroke.Color = Color3.fromRGB(60, 60, 75)
+MainStroke.Thickness = 1
+MainStroke.Parent = MainFrame
+
+-- ─── TITLE BAR ───────────────────────────────────────────────────────────────
+
+local TitleBar = Instance.new("Frame")
+TitleBar.Size = UDim2.new(1, 0, 0, 40)
+TitleBar.BackgroundColor3 = Color3.fromRGB(16, 16, 22)
+TitleBar.BorderSizePixel = 0
+TitleBar.Parent = MainFrame
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 12)
+
+local TitleFix = Instance.new("Frame")
+TitleFix.Size = UDim2.new(1, 0, 0, 12)
+TitleFix.Position = UDim2.new(0, 0, 1, -6)
+TitleFix.BackgroundColor3 = Color3.fromRGB(16, 16, 22)
+TitleFix.BorderSizePixel = 0
+TitleFix.Parent = TitleBar
+
+local AccentLine = Instance.new("Frame")
+AccentLine.Size = UDim2.new(1, 0, 0, 2)
+AccentLine.Position = UDim2.new(0, 0, 1, 0)
+AccentLine.BackgroundColor3 = Color3.fromRGB(80, 80, 140)
+AccentLine.BorderSizePixel = 0
+AccentLine.Parent = TitleBar
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size = UDim2.new(1, -110, 1, 0)
+TitleLabel.Position = UDim2.new(0, 14, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text = "🔍  Player Items Viewer"
+TitleLabel.TextColor3 = Color3.fromRGB(230, 230, 255)
+TitleLabel.TextSize = 13
+TitleLabel.Font = Enum.Font.GothamBold
+TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+TitleLabel.Parent = TitleBar
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(0, 130, 1, 0)
+StatusLabel.Position = UDim2.new(1, -172, 0, 0)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Collecting..."
+StatusLabel.TextColor3 = Color3.fromRGB(130, 130, 160)
+StatusLabel.TextSize = 11
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Right
+StatusLabel.Parent = TitleBar
+
+-- ── Close button: two thin white bars rotated into an X ──────────────────────
+-- Using actual ImageLabel lines is most reliable; simpler: rotated Frames.
+local CloseBtnHitbox = Instance.new("TextButton")
+CloseBtnHitbox.Size = UDim2.new(0, 28, 0, 28)
+CloseBtnHitbox.Position = UDim2.new(1, -36, 0.5, -14)
+CloseBtnHitbox.BackgroundTransparency = 1
+CloseBtnHitbox.Text = ""
+CloseBtnHitbox.BorderSizePixel = 0
+CloseBtnHitbox.Parent = TitleBar
+
+local function makeXBar(parent, rot)
+    local bar = Instance.new("Frame")
+    bar.AnchorPoint = Vector2.new(0.5, 0.5)
+    bar.Size = UDim2.new(0, 14, 0, 2)
+    bar.Position = UDim2.new(0.5, 0, 0.5, 0)
+    bar.Rotation = rot
+    bar.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    bar.BorderSizePixel = 0
+    bar.Parent = parent
+    Instance.new("UICorner", bar).CornerRadius = UDim.new(1, 0)
+    return bar
+end
+
+local xBar1 = makeXBar(CloseBtnHitbox, 45)
+local xBar2 = makeXBar(CloseBtnHitbox, -45)
+
+local function setXColor(c)
+    xBar1.BackgroundColor3 = c
+    xBar2.BackgroundColor3 = c
+end
+
+CloseBtnHitbox.MouseButton1Click:Connect(function() ScreenGui:Destroy() end)
+CloseBtnHitbox.MouseEnter:Connect(function() setXColor(Color3.fromRGB(255, 90, 90)) end)
+CloseBtnHitbox.MouseLeave:Connect(function() setXColor(Color3.fromRGB(255, 255, 255)) end)
+
+-- ─── DRAG ────────────────────────────────────────────────────────────────────
+
+local dragging, dragStart, startPos
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = MainFrame.Position
+    end
+end)
+TitleBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        MainFrame.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ─── SCROLL ──────────────────────────────────────────────────────────────────
+
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Size = UDim2.new(1, -12, 1, -48)
+ScrollFrame.Position = UDim2.new(0, 6, 0, 44)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.ScrollBarThickness = 4
+ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(90, 90, 120)
+ScrollFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ScrollFrame.Parent = MainFrame
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding = UDim.new(0, 8)
+ListLayout.Parent = ScrollFrame
+
+local ListPadding = Instance.new("UIPadding")
+ListPadding.PaddingTop = UDim.new(0, 6)
+ListPadding.PaddingBottom = UDim.new(0, 8)
+ListPadding.Parent = ScrollFrame
+
+-- ─── FAILED CARD ─────────────────────────────────────────────────────────────
+
+local function addFailedCard(username, userId, reason)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, -8, 0, 56)
+    card.BackgroundColor3 = Color3.fromRGB(50, 22, 22)
+    card.BorderSizePixel = 0
+    card.Parent = ScrollFrame
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 8)
+
+    local Border = Instance.new("UIStroke")
+    Border.Color = Color3.fromRGB(160, 40, 40)
+    Border.Thickness = 1
+    Border.Parent = card
+
+    local Avatar = Instance.new("ImageLabel")
+    Avatar.Size = UDim2.new(0, 36, 0, 36)
+    Avatar.Position = UDim2.new(0, 10, 0.5, -18)
+    Avatar.BackgroundColor3 = Color3.fromRGB(80, 35, 35)
+    Avatar.BorderSizePixel = 0
+    Avatar.Image = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. userId .. "&width=60&height=60&format=png"
+    Avatar.ImageTransparency = 0.5
+    Avatar.Parent = card
+    Instance.new("UICorner", Avatar).CornerRadius = UDim.new(0, 6)
+
+    local NameLabel = Instance.new("TextLabel")
+    NameLabel.Size = UDim2.new(1, -60, 0, 20)
+    NameLabel.Position = UDim2.new(0, 56, 0, 10)
+    NameLabel.BackgroundTransparency = 1
+    NameLabel.Text = username
+    NameLabel.TextColor3 = Color3.fromRGB(255, 110, 110)
+    NameLabel.TextSize = 13
+    NameLabel.Font = Enum.Font.GothamBold
+    NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    NameLabel.Parent = card
+
+    local ReasonLabel = Instance.new("TextLabel")
+    ReasonLabel.Size = UDim2.new(1, -60, 0, 16)
+    ReasonLabel.Position = UDim2.new(0, 56, 0, 30)
+    ReasonLabel.BackgroundTransparency = 1
+    ReasonLabel.Text = reason or "Failed"
+    ReasonLabel.TextColor3 = Color3.fromRGB(180, 70, 70)
+    ReasonLabel.TextSize = 11
+    ReasonLabel.Font = Enum.Font.Gotham
+    ReasonLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ReasonLabel.Parent = card
+end
+
+-- ─── STATS ROW (rebuilt clean, no overlap) ───────────────────────────────────
+
+local STAT_LABEL_COLORS = {
+    Eliminations = Color3.fromRGB(220, 60, 60),
+    Victories    = Color3.fromRGB(80, 160, 255),
+    Survivals    = Color3.fromRGB(80, 210, 100),
+    Saves        = Color3.fromRGB(220, 180, 60),
+}
+
+local function readStatValue(statsContainer, statName)
+    local ok, val = pcall(function() return statsContainer[statName].Amount.Text end)
+    return ok and val or "?"
+end
+
+local function readStatRole(statsContainer, statName)
+    local ok, val = pcall(function() return statsContainer[statName].Role.Text end)
+    return ok and val or statName
+end
+
+local function buildStatsRow(statsData, parentFrame, yOffset)
+    local ROW_H = 56
+    local statsHolder = Instance.new("Frame")
+    statsHolder.Size = UDim2.new(1, -12, 0, ROW_H)
+    statsHolder.Position = UDim2.new(0, 6, 0, yOffset)
+    statsHolder.BackgroundTransparency = 1
+    statsHolder.Parent = parentFrame
+
+    local UIList = Instance.new("UIListLayout")
+    UIList.FillDirection = Enum.FillDirection.Horizontal
+    UIList.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    UIList.VerticalAlignment = Enum.VerticalAlignment.Center
+    UIList.Padding = UDim.new(0, 0)
+    UIList.Parent = statsHolder
+
+    local count = #statsData
+    for _, s in ipairs(statsData) do
+        local col = Instance.new("Frame")
+        col.Size = UDim2.new(1 / count, 0, 1, 0)
+        col.BackgroundTransparency = 1
+        col.Parent = statsHolder
+
+        local roleLabel = Instance.new("TextLabel")
+        roleLabel.Size = UDim2.new(1, -4, 0, 18)
+        roleLabel.Position = UDim2.new(0, 2, 0, 4)
+        roleLabel.BackgroundTransparency = 1
+        roleLabel.Text = s.role
+        roleLabel.TextColor3 = s.color
+        roleLabel.TextSize = 10
+        roleLabel.Font = Enum.Font.GothamBold
+        roleLabel.TextXAlignment = Enum.TextXAlignment.Center
+        roleLabel.TextStrokeTransparency = 0.6
+        roleLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        roleLabel.Parent = col
+
+        local amtLabel = Instance.new("TextLabel")
+        amtLabel.Size = UDim2.new(1, -4, 0, 28)
+        amtLabel.Position = UDim2.new(0, 2, 0, 22)
+        amtLabel.BackgroundTransparency = 1
+        amtLabel.Text = s.value
+        amtLabel.TextColor3 = Color3.fromRGB(230, 230, 230)
+        amtLabel.TextSize = 22
+        amtLabel.Font = Enum.Font.GothamBold
+        amtLabel.TextXAlignment = Enum.TextXAlignment.Center
+        amtLabel.TextStrokeTransparency = 0.7
+        amtLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        amtLabel.Parent = col
+    end
+
+    return ROW_H
+end
+
+-- ─── PLAYER CARD ─────────────────────────────────────────────────────────────
+
+local function addPlayerCard(username, userId, clonedItems, extraInfo, targetPlayer, playerScore)
+    local HEADER_H = 62  -- a touch taller to fit the age line
+
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, -8, 0, 0)
+    card.AutomaticSize = Enum.AutomaticSize.Y
+    card.BackgroundColor3 = Color3.fromRGB(32, 32, 40)
+    card.BorderSizePixel = 0
+    card.Parent = ScrollFrame
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 10)
+
+    local CardStroke = Instance.new("UIStroke")
+    CardStroke.Color = Color3.fromRGB(55, 55, 70)
+    CardStroke.Thickness = 1
+    CardStroke.Parent = card
+
+    -- Avatar
+    local Avatar = Instance.new("ImageLabel")
+    Avatar.Size = UDim2.new(0, 40, 0, 40)
+    Avatar.Position = UDim2.new(0, 10, 0, 9)
+    Avatar.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    Avatar.BorderSizePixel = 0
+    Avatar.Image = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. userId .. "&width=60&height=60&format=png"
+    Avatar.Parent = card
+    Instance.new("UICorner", Avatar).CornerRadius = UDim.new(0, 8)
+
+    -- Elite badge
+    if extraInfo.elite then
+        local eliteClone = extraInfo.elite:Clone()
+        eliteClone.Size = UDim2.new(0, 40, 0, 13)
+        eliteClone.Position = UDim2.new(0, 10, 0, 36)
+        eliteClone.AnchorPoint = Vector2.new(0, 0)
+        eliteClone.Parent = card
+    end
+
+    -- Username
+    local NameLabel = Instance.new("TextLabel")
+    NameLabel.Size = UDim2.new(0, 230, 0, 20)
+    NameLabel.Position = UDim2.new(0, 58, 0, 8)
+    NameLabel.BackgroundTransparency = 1
+    NameLabel.Text = username
+    NameLabel.TextColor3 = Color3.fromRGB(225, 225, 240)
+    NameLabel.TextSize = 13
+    NameLabel.Font = Enum.Font.GothamBold
+    NameLabel.TextXAlignment = Enum.TextXAlignment.Left
+    NameLabel.Parent = card
+
+    -- Item count
+    local CountLabel = Instance.new("TextLabel")
+    CountLabel.Size = UDim2.new(0, 230, 0, 14)
+    CountLabel.Position = UDim2.new(0, 58, 0, 28)
+    CountLabel.BackgroundTransparency = 1
+    CountLabel.Text = #clonedItems .. " items"
+    CountLabel.TextColor3 = Color3.fromRGB(120, 120, 150)
+    CountLabel.TextSize = 11
+    CountLabel.Font = Enum.Font.Gotham
+    CountLabel.TextXAlignment = Enum.TextXAlignment.Left
+    CountLabel.Parent = card
+
+    -- Account age
+    local ageText = "unknown age"
+    if targetPlayer then
+        local ageDays = targetPlayer.AccountAge
+        local years = math.floor(ageDays / 365)
+        ageText = years >= 1
+            and ("~" .. years .. "yr old (" .. ageDays .. "d)")
+            or  (ageDays .. " days old")
+    end
+    local AgeLabel = Instance.new("TextLabel")
+    AgeLabel.Size = UDim2.new(0, 230, 0, 14)
+    AgeLabel.Position = UDim2.new(0, 58, 0, 44)
+    AgeLabel.BackgroundTransparency = 1
+    AgeLabel.Text = "🕐 " .. ageText
+    AgeLabel.TextColor3 = Color3.fromRGB(100, 160, 220)
+    AgeLabel.TextSize = 10
+    AgeLabel.Font = Enum.Font.Gotham
+    AgeLabel.TextXAlignment = Enum.TextXAlignment.Left
+    AgeLabel.Parent = card
+
+    -- Level frame (top-right corner)
+    if extraInfo.levelFrame then
+        local lvlClone = extraInfo.levelFrame:Clone()
+        lvlClone.Size = UDim2.new(0, 72, 0, 36)
+        lvlClone.Position = UDim2.new(1, -82, 0, 10)
+        lvlClone.AnchorPoint = Vector2.new(0, 0)
+        lvlClone.Parent = card
+    end
+
+    -- Stats row (rebuilt cleanly)
+    local statsY = HEADER_H
+    local STATS_H = 0
+    if extraInfo.rawStatsContainer then
+        local statNames = {"Eliminations", "Victories", "Survivals", "Saves"}
+        local statsData = {}
+        for _, sn in ipairs(statNames) do
+            if extraInfo.rawStatsContainer:FindFirstChild(sn) then
+                table.insert(statsData, {
+                    role  = readStatRole(extraInfo.rawStatsContainer, sn),
+                    value = readStatValue(extraInfo.rawStatsContainer, sn),
+                    color = STAT_LABEL_COLORS[sn] or Color3.fromRGB(200, 200, 200),
+                })
+            end
+        end
+        if #statsData > 0 then
+            STATS_H = buildStatsRow(statsData, card, statsY)
+        end
+    end
+
+    local dividerY = statsY + STATS_H + (STATS_H > 0 and 6 or 0)
+
+    local Divider = Instance.new("Frame")
+    Divider.Size = UDim2.new(1, -16, 0, 1)
+    Divider.Position = UDim2.new(0, 8, 0, dividerY)
+    Divider.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    Divider.BorderSizePixel = 0
+    Divider.Parent = card
+
+    local itemsY = dividerY + 8
+
+    local ItemsFrame = Instance.new("Frame")
+    ItemsFrame.Size = UDim2.new(1, -12, 0, 0)
+    ItemsFrame.Position = UDim2.new(0, 6, 0, itemsY)
+    ItemsFrame.AutomaticSize = Enum.AutomaticSize.Y
+    ItemsFrame.BackgroundTransparency = 1
+    ItemsFrame.Parent = card
+
+    local UIPadding = Instance.new("UIPadding")
+    UIPadding.PaddingBottom = UDim.new(0, 8)
+    UIPadding.Parent = ItemsFrame
+
+    if #clonedItems == 0 then
+        local NoItems = Instance.new("TextLabel")
+        NoItems.Size = UDim2.new(1, 0, 0, 30)
+        NoItems.BackgroundTransparency = 1
+        NoItems.Text = "No items found"
+        NoItems.TextColor3 = Color3.fromRGB(100, 100, 120)
+        NoItems.TextSize = 11
+        NoItems.Font = Enum.Font.GothamItalic
+        NoItems.TextXAlignment = Enum.TextXAlignment.Left
+        NoItems.Parent = ItemsFrame
+    else
+        local UIGridLayout = Instance.new("UIGridLayout")
+        UIGridLayout.CellSize = UDim2.new(0, 80, 0, 100)
+        UIGridLayout.CellPadding = UDim2.new(0, 6, 0, 6)
+        UIGridLayout.Parent = ItemsFrame
+
+        table.sort(clonedItems, function(a, b) return a.rank < b.rank end)
+
+        for _, item in ipairs(clonedItems) do
+            local stroke = Instance.new("UIStroke")
+            stroke.Color = RARITY_COLORS[item.rarityName] or RARITY_COLORS.UNKNOWN
+            stroke.Thickness = 2
+            stroke.Parent = item.frame
+
+            item.frame.Size = UDim2.new(0, 80, 0, 100)
+            item.frame.Position = UDim2.new(0, 0, 0, 0)
+            item.frame.Parent = ItemsFrame
+        end
+    end
+end
+
+-- ─── PROFILE HELPERS ─────────────────────────────────────────────────────────
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+
+local function getContainer()
+	return LocalPlayer.PlayerGui
+		:WaitForChild("MainGUI")
+		:WaitForChild("Game")
+		:WaitForChild("ViewProfile")
+		:WaitForChild("Main")
+		:WaitForChild("Weapons")
+		:WaitForChild("Items")
+		:WaitForChild("Container")
+end
+
+local function cloneItems()
+	local clones = {}
+
+	local container = getContainer()
+	if not container then
+		warn("Container not found")
+		return clones
+	end
+
+	-- deep search EVERYTHING under container
+	for _, obj in ipairs(container:GetDescendants()) do
+		if obj.Name == "NewItem" then
+			local rank, rarityName = getRarity(obj)
+
+			table.insert(clones, {
+				frame = obj:Clone(),
+				rank = rank,
+				rarityName = rarityName
+			})
+		end
+	end
+
+	return clones
+end
+
+local function cloneExtraInfo()
+    local info = {}
+    local okE, elite = pcall(function()
+        return LocalPlayer.PlayerGui.MainGUI.Game.ViewProfile.Main.Profile.Container.Character.Elite
+    end)
+    if okE and elite and elite.Visible then info.elite = elite:Clone() end
+
+    local okL, levelFrame = pcall(function()
+        return LocalPlayer.PlayerGui.MainGUI.Game.ViewProfile.Main.Profile.Container.Character.CharacterIcon.LevelFrame
+    end)
+    if okL and levelFrame then info.levelFrame = levelFrame:Clone() end
+
+    local okS, statsContainer = pcall(function()
+        return LocalPlayer.PlayerGui.MainGUI.Game.ViewProfile.Main.Profile.Container.Profile.Season1Stats.Container
+    end)
+    if okS and statsContainer then info.rawStatsContainer = statsContainer end
+
+    return info
+end
+
+local function hasAnyNewItem(itemsContainer)
+    for _, categoryFrame in ipairs(itemsContainer:GetChildren()) do
+        if not categoryFrame:IsA("ScrollingFrame") then continue end
+        local innerContainer = categoryFrame:FindFirstChild("Container")
+        if innerContainer then
+            for _, obj in ipairs(innerContainer:GetChildren()) do
+                if obj.Name == "NewItem" then return true end
+            end
+        end
+    end
+    return false
+end
+
+-- ─── HIDE INSPECT PANEL EVERY FRAME DURING SCAN ─────────────────────────────
+-- Firing buttons on hidden ancestors doesn't work, but we can keep the Inspect
+-- panel rendered off-screen (Y +3000) and force every child invisible so the
+-- player never sees it, while our getconnections/Fire() calls still go through
+-- because the Inspect frame itself remains Visible = true.
+
+local RunService = game:GetService("RunService")
+
+-- Grab all the nodes we want to hide / move. Using pcall so a missing node
+-- never crashes the script.
+local function safeGet(path)
+    local ok, v = pcall(function() return path() end)
+    return ok and v or nil
+end
+
+local Inspect     = safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect end)
+local ViewProfile = safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.ViewProfile end)
+
+-- Nodes forced Visible=false every RenderStep during the scan.
+-- Inspect itself stays Visible=true (needed for button fires) but is shunted
+-- off-screen. ViewProfile is kept hidden throughout and left hidden when done
+-- so the game's own toggle can open it again normally.
+local hideEveryFrame = {
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Close.TextLabel end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Container.Username end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Close end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Container.Trade.TextLabel end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Container.Trade end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Container end),
+}
+
+-- Store the original Inspect position so we can restore it at the end.
+local inspectOriginalPos = Inspect and Inspect.Position or UDim2.new(0, 0, 0, 0)
+
+-- Shunt Inspect way off-screen (+3 on Y axis in offset = 3 pixels, but the
+-- request is Y+3 scale units which puts it 3 screen-heights below the visible
+-- area — using Scale so it works at any resolution).
+if Inspect then
+    Inspect.Position = UDim2.new(
+        inspectOriginalPos.X.Scale,
+        inspectOriginalPos.X.Offset,
+        inspectOriginalPos.Y.Scale + 3,
+        inspectOriginalPos.Y.Offset
+    )
+end
+
+
+local function shuntOffScreen(guiObject, yScaleOffset)
+	if not guiObject then return end
+
+	-- store original position ON the object
+	if not guiObject:GetAttribute("OriginalPosX") then
+		guiObject:SetAttribute("OriginalPosX", guiObject.Position.X.Scale)
+		guiObject:SetAttribute("OriginalPosXOffset", guiObject.Position.X.Offset)
+		guiObject:SetAttribute("OriginalPosY", guiObject.Position.Y.Scale)
+		guiObject:SetAttribute("OriginalPosYOffset", guiObject.Position.Y.Offset)
+	end
+
+	guiObject.Position = UDim2.new(
+		guiObject.Position.X.Scale,
+		guiObject.Position.X.Offset,
+		guiObject.Position.Y.Scale + (yScaleOffset or 3),
+		guiObject.Position.Y.Offset
+	)
+end
+
+local function restore(guiObject)
+	if not guiObject then return end
+
+	guiObject.Position = UDim2.new(
+		guiObject:GetAttribute("OriginalPosX"),
+		guiObject:GetAttribute("OriginalPosXOffset"),
+		guiObject:GetAttribute("OriginalPosY"),
+		guiObject:GetAttribute("OriginalPosYOffset")
+	)
+end
+
+
+
+
+-- Every RenderStep: keep all those children Visible = false.
+-- The Inspect frame itself stays Visible = true (needed for button fires)
+-- but is off-screen, and every rendered child is hidden.
+local scanDone = false
+local hideConn = RunService.RenderStepped:Connect(function()
+    if scanDone then return end
+    for _, node in ipairs(hideEveryFrame) do
+        pcall(function() node.Visible = false end)
+    end
+end)
+
+-- ─── SORT PLAYERS BY LEVEL + PRESTIGE (instant, no profile needed) ───────────
+
+StatusLabel.Text = "Collecting ranks..."
+
+local playerList = Players:GetPlayers()
+local others = {}
+for _, p in ipairs(playerList) do
+    if p ~= LocalPlayer then
+        local score = getPlayerScore(p.Name)
+        table.insert(others, { player = p, score = score })
+        print(p.Name .. " → score " .. score)
+    end
+end
+
+-- Highest score first (prestige*100 + level)
+table.sort(others, function(a, b) return a.score > b.score end)
+
+local total = #others
+local done  = 0
+
+-- ─── MAIN SCAN LOOP ──────────────────────────────────────────────────────────
+
+for _, entry in ipairs(others) do
+    local player   = entry.player
+    local username = player.Name
+    local userId   = player.UserId
+
+    StatusLabel.Text = "Scanning " .. username .. "..."
+
+    if not Players:FindFirstChild(username) then
+        addFailedCard(username, userId, "Player left the game")
+        done = done + 1
+        StatusLabel.Text = done .. "/" .. total .. " done"
+        continue
+    end
+
+    local success, targetButton = pcall(function()
+        return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Container[username].ActionButton
+    end)
+
+    if success and targetButton then
+        local connections = getconnections(targetButton.Activated)
+        for _, conn in ipairs(connections) do conn:Fire() end
+
+        wait(0.1)
+
+        if not Players:FindFirstChild(username) then
+            closeProfile()
+            addFailedCard(username, userId, "Player left during scan")
+            done = done + 1
+            StatusLabel.Text = done .. "/" .. total .. " done"
+            continue
+        end
+
+        local ok2, profileBtn = pcall(function()
+            return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Container.Profile
+        end)
+        if ok2 and profileBtn then
+            local pConns = getconnections(profileBtn.Activated)
+            for _, conn in ipairs(pConns) do conn:Fire() end
+        end
+local function waitUntil(conditionFn, timeout)
+	local elapsed = 0
+
+	while not conditionFn() and elapsed < timeout do
+		task.wait(0.05)
+		elapsed += 0.05
+	end
+
+	return conditionFn()
+end
+
+        local loaded = waitUntil(function()
+            if not Players:FindFirstChild(username) then return true end
+            local ok3, vp = pcall(function()
+                return LocalPlayer.PlayerGui.MainGUI.Game.ViewProfile
+            end)
+            if not ok3 or not vp or not vp.Visible then return false end
+            local ok4, itemsContainer = pcall(function()
+                return LocalPlayer.PlayerGui.MainGUI.Game.ViewProfile.Main.Weapons.Items.Container
+            end)
+            if not ok4 or not itemsContainer then return false end
+            return hasAnyNewItem(itemsContainer)
+        end, 8)
+
+        if not Players:FindFirstChild(username) then
+            closeProfile()
+            addFailedCard(username, userId, "Player left during scan")
+            done = done + 1
+            StatusLabel.Text = done .. "/" .. total .. " done"
+            continue
+        end
+local function closeProfile()
+	local LocalPlayer = game:GetService("Players").LocalPlayer
+
+	local ok, vp = pcall(function()
+		return LocalPlayer.PlayerGui.MainGUI.Game.ViewProfile
+	end)
+
+	if ok and vp then
+		vp.Visible = false
+	end
+
+	local ok2, backBtn = pcall(function()
+		return LocalPlayer.PlayerGui.MainGUI.Game.ViewProfile.Main.Back
+	end)
+
+	if ok2 and backBtn then
+		local conns = getconnections(backBtn.Activated)
+		for _, conn in ipairs(conns) do
+			conn:Fire()
+		end
+	end
+
+	task.wait(0.05)
+end
+
+        if loaded then
+            wait(.1)
+            local clones    = cloneItems()
+            local extraInfo = cloneExtraInfo()
+            local livePlayer = Players:FindFirstChild(username)
+            addPlayerCard(username, userId, clones, extraInfo, livePlayer, entry.score)
+            print("--- Completed:", username, "(" .. #clones .. " items, score=" .. entry.score .. ") ---")
+        else
+            warn("Timed out waiting for profile:", username)
+            addFailedCard(username, userId, "Profile timed out")
+        end
+
+        closeProfile()
+        wait(0.3)
+    else
+        warn("Could not find button for:", username)
+        addFailedCard(username, userId, "Button not found")
+    end
+
+    done = done + 1
+    StatusLabel.Text = done .. "/" .. total .. " done"
+end
+
+-- ─── CLEANUP: restore Inspect panel to original state ────────────────────────
+scanDone = true
+hideConn:Disconnect()
+
+-- Restore position
+if Inspect then
+    Inspect.Position = inspectOriginalPos
+end
+
+local ViewProfile = game.Players.LocalPlayer
+	.PlayerGui.MainGUI.Game.ViewProfile
+
+shuntOffScreen(ViewProfile, 3)
+
+-- later when you want it back:
+restore(ViewProfile)
+
+-- Restore Inspect children to visible (so the leaderboard works normally again).
+-- ViewProfile is intentionally left Visible=false — the game's own toggle
+-- will open it again when the player clicks; no permanent breakage.
+local inspectRestoreNodes = {
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Close.TextLabel end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Container.Username end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Close end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Container.Trade.TextLabel end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Container.Trade end),
+    safeGet(function() return LocalPlayer.PlayerGui.MainGUI.Game.Leaderboard.Inspect.Container end),
+}
+for _, node in ipairs(inspectRestoreNodes) do
+    if node then
+        pcall(function() node.Visible = true end)
+    end
+end
+
+StatusLabel.Text = "Done ✓"
+print("All players processed")
